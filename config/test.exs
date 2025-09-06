@@ -35,3 +35,8 @@ config :phoenix, :plug_init_mode, :runtime
 # Enable helpful, but potentially expensive runtime checks
 config :phoenix_live_view,
   enable_expensive_runtime_checks: true
+
+# Configure Otto.LLM for testing
+config :otto_llm, Otto.LLM.Providers.OpenAI,
+  api_key: System.get_env("OPENAI_API_KEY"),
+  req_options: []

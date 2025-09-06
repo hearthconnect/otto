@@ -3,7 +3,12 @@ const fs = require("fs")
 const path = require("path")
 
 module.exports = plugin(function({matchComponents, theme}) {
-  let iconsDir = path.join(__dirname, "../../../deps/heroicons/optimized")
+  // Support both single app and umbrella layouts
+  let candidates = [
+    path.join(__dirname, "../../../deps/heroicons/optimized"), // non-umbrella
+    path.join(__dirname, "../../../../deps/heroicons/optimized") // umbrella
+  ]
+  let iconsDir = candidates.find((p) => fs.existsSync(p)) || candidates[candidates.length - 1]
   let values = {}
   let icons = [
     ["", "/24/outline"],

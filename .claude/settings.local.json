@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(elixir:*)",
+      "Bash(mix phx.new:*)",
+      "Bash(mix deps.get:*)",
+      "Bash(psql:*)",
+      "Bash(iex:*)",
+      "WebSearch",
+      "WebFetch(domain:hexdocs.pm)",
+      "WebFetch(domain:tidewave.ai)",
+      "WebFetch(domain:github.com)",
+      "Bash(mix archive.install:*)",
+      "Bash(mix:*)",
+      "Bash(INTEGRATION_TESTS=1 mix test --include integration)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

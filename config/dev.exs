@@ -81,7 +81,9 @@ config :phoenix_live_view,
   # Changing this configuration will require mix clean and a full recompile.
   debug_heex_annotations: true,
   # Enable helpful, but potentially expensive runtime checks
-  enable_expensive_runtime_checks: true
+  enable_expensive_runtime_checks: true,
+  # Enable debug attributes for better Tidewave integration
+  debug_attributes: true
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
