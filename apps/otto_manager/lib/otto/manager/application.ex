@@ -7,14 +7,11 @@ defmodule Otto.Manager.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      # Starts a worker by calling: Otto.Manager.Worker.start_link(arg)
-      # {Otto.Manager.Worker, arg}
-    ]
+    children = Otto.Manager.Supervisor.child_specs()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Otto.Manager.Supervisor]
+    opts = [strategy: :one_for_one, name: Otto.Manager.Application.Supervisor]
     Supervisor.start_link(children, opts)
   end
 end
