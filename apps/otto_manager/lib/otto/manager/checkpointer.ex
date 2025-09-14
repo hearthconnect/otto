@@ -351,12 +351,13 @@ defmodule Otto.Manager.Checkpointer do
 
     case File.stat(checkpoint_path) do
       {:ok, stat} ->
+        # stat.ctime and stat.mtime are already Erlang datetime tuples
         metadata = %{
           agent_id: agent_id,
           checkpoint_id: checkpoint_id,
           size: stat.size,
-          created_at: stat.ctime |> DateTime.from_unix!(),
-          modified_at: stat.mtime |> DateTime.from_unix!()
+          created_at: NaiveDateTime.from_erl!(stat.ctime) |> DateTime.from_naive!("Etc/UTC"),
+          modified_at: NaiveDateTime.from_erl!(stat.mtime) |> DateTime.from_naive!("Etc/UTC")
         }
         {:ok, metadata}
 
@@ -375,7 +376,10 @@ defmodule Otto.Manager.Checkpointer do
 
   defp do_cleanup_agent_checkpoints(state, agent_id) do
     agent_dir = Path.join(state.checkpoint_dir, sanitize_filename(agent_id))
-    File.rm_rf(agent_dir)
+    case File.rm_rf(agent_dir) do
+      {:ok, _files} -> :ok
+      error -> error
+    end
   end
 
   defp do_get_stats(state) do

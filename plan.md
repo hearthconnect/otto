@@ -162,23 +162,230 @@ From `/Users/jeffdeville/projects/otto/otto/CLAUDE.md`:
 - Each app has its own dependencies in their respective `mix.exs`
 - Each app can be developed and tested independently
 
+---
+
+# REFINED IMPLEMENTATION STRATEGY
+
+## 1. File Impact Map
+
+### NEW FILES TO CREATE
+
+#### Core Tool System (`apps/otto_manager/lib/otto/tool/`)
+- `tool.ex` - Otto.Tool behaviour definition (40 lines)
+- `bus.ex` - Otto.Tool.Bus GenServer for registration/permissions (120 lines)
+- `fs/read.ex` - Otto.Tool.FS.Read implementation (80 lines)
+- `fs/write.ex` - Otto.Tool.FS.Write implementation (90 lines)
+- `grep.ex` - Otto.Tool.Grep implementation via ripgrep (100 lines)
+- `http.ex` - Otto.Tool.HTTP implementation (110 lines)
+- `json_yaml.ex` - Otto.Tool.JsonYaml parsing tool (70 lines)
+- `test_runner.ex` - Otto.Tool.TestRunner for mix tests (130 lines)
+
+#### Agent System (`apps/otto_manager/lib/otto/agent/`)
+- `config.ex` - Otto.Agent.Config struct + YAML loader (150 lines)
+- `server.ex` - Otto.Agent.Server GenServer orchestrator (200 lines)
+- `session.ex` - Otto.Agent.Session state container (80 lines)
+- `budget.ex` - Otto.Agent.Budget tracker/enforcer (100 lines)
+
+#### State Management (`apps/otto_manager/lib/otto/manager/`)
+- `context_store.ex` - Otto.Manager.ContextStore ETS-based storage (90 lines)
+- `checkpointer.ex` - Otto.Manager.Checkpointer filesystem persistence (110 lines)
+- `cost_tracker.ex` - Otto.Manager.CostTracker usage aggregation (120 lines)
+
+#### Configuration Structure
+- `.otto/agents/engineer.yml` - Example agent configuration (30 lines)
+- `.otto/agents/reviewer.yml` - Example agent configuration (25 lines)
+- `.otto/config.yml` - Global Otto settings (20 lines)
+- `.otto/prompts/base.txt` - Base system prompt template (40 lines)
+
+#### LLM Enhancement (`apps/otto_llm/lib/otto/llm/`)
+- `tool_use.ex` - Otto.LLM.ToolUse protocol for function calling (160 lines)
+- `streaming.ex` - Otto.LLM.Streaming response handler (140 lines)
+
+### FILES TO MODIFY
+
+#### Supervision Tree Updates
+- `apps/otto_manager/lib/otto/manager/application.ex` - Add supervision children (15 line change)
+- `apps/otto_manager/mix.exs` - Add yaml_elixir, nimble_options deps (3 line change)
+
+#### Root Configuration
+- `mix.exs` - Add ripgrep to system dependencies comment (2 line change)
+- `.gitignore` - Add var/otto/ entries (2 line change)
+
+## 2. MVP Definition
+
+### MUST SHIP (Phase 0 Core)
+✅ **Agent Creation**: Load YAML config, start agent process in < 500ms
+✅ **Tool Execution**: FS.Read, FS.Write, Grep working with sandboxing
+✅ **Budget Enforcement**: Time/token limits with graceful shutdown
+✅ **LLM Integration**: Request/response with tool-use detection
+✅ **State Persistence**: Session artifacts saved to filesystem
+✅ **Example Working**: `engineer.yml` agent completes file modification task
+
+### NICE-TO-HAVE (Phase 1+)
+❌ **Streaming Responses**: Start with request/response, add streaming later
+❌ **Advanced Tools**: HTTP, TestRunner, JsonYaml (defer if time constrained)
+❌ **LiveView UI**: CLI-first approach, web interface in Phase 1
+❌ **Complex Budgets**: Start with simple time limits, add token/cost later
+❌ **Multi-agent**: Single agent orchestration first, parallelism later
+
+## 3. Implementation Chunks (6 Parallel Workstreams)
+
+### Chunk A: Tool Foundation (10-12 hrs)
+**Owner**: Backend Implementer
+**Files**: `tool.ex`, `bus.ex`, `fs/read.ex`, `fs/write.ex`
+**Output**: Basic tool system with file I/O
+**Blockers**: None
+
+### Chunk B: Core Tools (12-14 hrs)
+**Owner**: Backend Implementer
+**Dependencies**: Chunk A complete
+**Files**: `grep.ex`, `http.ex`, `json_yaml.ex`, `test_runner.ex`
+**Output**: Full tool suite implemented
+
+### Chunk C: Agent Configuration (8-10 hrs)
+**Owner**: Backend Implementer
+**Files**: `config.ex`, `.otto/` structure, YAML examples
+**Output**: YAML loading and validation working
+**Blockers**: None
+
+### Chunk D: Agent Orchestration (14-16 hrs)
+**Owner**: Backend Implementer
+**Dependencies**: Chunks A & C complete
+**Files**: `server.ex`, `session.ex`, `budget.ex`
+**Output**: Agent lifecycle management
+
+### Chunk E: LLM Enhancement (10-12 hrs)
+**Owner**: Backend Implementer
+**Files**: `tool_use.ex` in otto_llm app
+**Output**: Function calling capability
+**Blockers**: None (uses existing otto_llm base)
+
+### Chunk F: State Management (12-14 hrs)
+**Owner**: Backend Implementer
+**Files**: `context_store.ex`, `checkpointer.ex`, `cost_tracker.ex`
+**Output**: Persistence and cost tracking
+**Blockers**: None
+
+### Chunk G: Supervision Integration (6-8 hrs)
+**Owner**: Backend Implementer
+**Dependencies**: All chunks A-F complete
+**Files**: Modify `application.ex`, wire up supervision tree
+**Output**: Full system integration
+
+### Chunk H: Testing & Examples (16-20 hrs)
+**Owner**: Test Engineer
+**Files**: Test files, integration scenarios, example workflows
+**Output**: 80% test coverage, working examples
+**Parallel**: Can start early with TDD approach
+
+## 4. Critical Integration Points
+
+### 1. Tool System ↔ Agent Server
+**Integration**: Tool.Bus registration must happen before Agent.Server starts
+**Risk**: Tool permission checking during agent execution
+**Mitigation**: Well-defined tool registration API, clear error handling
+
+### 2. LLM ↔ Tool Execution
+**Integration**: otto_llm tool-use parsing must trigger otto_manager tool calls
+**Risk**: Function calling protocol mismatch
+**Mitigation**: Standardized tool schema, comprehensive integration tests
+
+### 3. Budget Enforcement ↔ All Systems
+**Integration**: Budget checks in tool execution, LLM calls, state operations
+**Risk**: Budget overruns due to async operations
+**Mitigation**: Synchronous budget checks, aggressive timeouts
+
+### 4. State Management ↔ Agent Sessions
+**Integration**: Context/checkpoints must persist across agent restarts
+**Risk**: State corruption or data loss
+**Mitigation**: Atomic filesystem operations, recovery procedures
+
+### 5. Supervision Tree ↔ Agent Lifecycle
+**Integration**: DynamicSupervisor must handle agent crashes gracefully
+**Risk**: Resource leaks or zombie processes
+**Mitigation**: Proper GenServer cleanup, test supervision failures
+
+## 5. Technical Risk Assessment
+
+### HIGH RISK 🔴
+**Tool Security Sandbox**: File operations restricted to working directory
+- *Risk*: Path traversal attacks, unauthorized file access
+- *Mitigation*: Path validation, chroot-like restrictions, comprehensive security tests
+- *Owner*: Backend Implementer
+- *Timeline*: Must be solved in Chunk A
+
+**Budget Enforcement Races**: Async tool calls vs budget limits
+- *Risk*: Cost overruns, infinite loops, resource exhaustion
+- *Mitigation*: Sync budget checks, hard timeouts, circuit breakers
+- *Owner*: Backend Implementer
+- *Timeline*: Critical for Chunk D
+
+### MEDIUM RISK 🟡
+**YAML Configuration Validation**: Complex agent configs with unclear errors
+- *Risk*: Poor developer experience, hard-to-debug failures
+- *Mitigation*: Comprehensive validation, clear error messages, schema examples
+- *Owner*: Backend Implementer
+- *Timeline*: Handle in Chunk C
+
+**LLM Tool-Use Protocol**: OpenAI function calling integration
+- *Risk*: Function schema mismatches, parsing failures
+- *Mitigation*: Start simple, comprehensive tool calling tests, fallback handling
+- *Owner*: Backend Implementer
+- *Timeline*: Primary focus for Chunk E
+
+### LOW RISK 🟢
+**Performance Targets**: < 500ms startup, < 100ms tool overhead
+- *Risk*: Slow agent initialization
+- *Mitigation*: ETS for fast lookups, minimize supervision tree depth
+- *Timeline*: Measure during integration (Chunk G)
+
+**Test Coverage 80%**: Achieving comprehensive test coverage
+- *Risk*: Insufficient testing leading to production issues
+- *Mitigation*: TDD approach, integration test focus
+- *Owner*: Test Engineer
+- *Timeline*: Parallel to all development chunks
+
+## 6. Success Metrics & Checkpoints
+
+### Week 1 Checkpoint
+- [ ] Tool system foundation working (Chunks A, C complete)
+- [ ] Agent can load YAML config and execute basic file tools
+- [ ] Security sandbox prevents path traversal
+- [ ] < 15 minutes from YAML to working agent
+
+### Week 2 Checkpoint
+- [ ] Full tool suite implemented (Chunk B complete)
+- [ ] Agent orchestration handles budgets (Chunk D complete)
+- [ ] LLM function calling working (Chunk E complete)
+- [ ] Example engineer agent completes file modification task
+
+### Week 3 Checkpoint (MVP Complete)
+- [ ] State management operational (Chunk F complete)
+- [ ] Full supervision tree integrated (Chunk G complete)
+- [ ] 80% test coverage achieved (Chunk H complete)
+- [ ] Performance targets met: < 500ms startup, < 100ms tool overhead
+- [ ] Security review passed for tool sandboxing
+
 ## Development Progress
 
-**Current Status**: Planning phase complete, launching parallel implementation teams
+**Current Status**: Tech lead analysis complete, ready for parallel implementation
 
-### Parallel Agent Tasks
-- **Tech Lead**: MVP planning and file-impact mapping
-- **Backend Implementer**: OTP components and supervision tree
-- **Test Engineer**: Red→Green test development
-- **Code Reviewer**: Continuous diff review for quality and scope
-- **QA Analyst**: Manual verification against acceptance criteria
-- **Docs Writer**: API documentation and usage examples
+### Next Actions (Start Immediately)
+1. **Chunk A**: Begin tool behaviour and basic file tools
+2. **Chunk C**: Begin YAML configuration system
+3. **Chunk H**: Begin TDD test development in parallel
+4. **Chunk E**: Begin LLM tool-use enhancement (leverages existing otto_llm)
 
-### Next Steps
-1. Implement core Tool behaviour and ToolBus
-2. Build base tools (FS, Grep, HTTP, Test)
-3. Create AgentConfig with YAML support
-4. Implement AgentServer GenServer
-5. Add state management components
-6. Wire up supervision tree
-7. Integration testing and polish
+### Dependency Chain
+```
+Chunk A (Tools) → Chunk B (More Tools)
+     ↓
+Chunk D (Agent Server) → Chunk G (Integration)
+     ↑
+Chunk C (Config)
+
+Chunk E (LLM) ─┐
+Chunk F (State) ┴→ Chunk G (Integration)
+
+Chunk H (Tests) → Continuous validation
+```

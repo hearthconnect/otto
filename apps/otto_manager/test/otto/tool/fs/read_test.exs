@@ -35,7 +35,7 @@ defmodule Otto.Tool.FS.ReadTest do
 
       assert {:ok, result} = Read.execute(args, context)
       assert result.content == "Hello, World!\nThis is a test file."
-      assert result.size == 32
+      assert result.size == byte_size(result.content)
       assert result.encoding == "utf8"
       assert String.ends_with?(result.file_path, "test.txt")
     end

@@ -14,8 +14,8 @@ defmodule Otto.Tool.FS.Read do
     with :ok <- validate_args(args),
          {:ok, file_path} <- get_file_path(args),
          {:ok, working_dir} <- get_working_dir(context),
-         :ok <- validate_path_within_working_dir(file_path, working_dir),
-         {:ok, content} <- read_file_safely(file_path) do
+         {:ok, full_path} <- expand_and_validate_path(file_path, working_dir),
+         {:ok, content} <- read_file_safely(full_path) do
 
       Logger.info("File read successful",
         session_id: Map.get(context, :session_id),
@@ -24,7 +24,7 @@ defmodule Otto.Tool.FS.Read do
       )
 
       {:ok, %{
-        file_path: file_path,
+        file_path: full_path,
         content: content,
         size: byte_size(content),
         encoding: detect_encoding(content)
@@ -115,12 +115,12 @@ defmodule Otto.Tool.FS.Read do
     end
   end
 
-  defp validate_path_within_working_dir(file_path, working_dir) do
+  defp expand_and_validate_path(file_path, working_dir) do
     expanded_working_dir = Path.expand(working_dir)
     expanded_file_path = Path.expand(file_path, working_dir)
 
     if String.starts_with?(expanded_file_path, expanded_working_dir) do
-      :ok
+      {:ok, expanded_file_path}
     else
       {:error, "file_path is outside working directory"}
     end

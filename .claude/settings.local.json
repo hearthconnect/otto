@@ -12,7 +12,16 @@
       "WebFetch(domain:github.com)",
       "Bash(mix archive.install:*)",
       "Bash(mix:*)",
-      "Bash(INTEGRATION_TESTS=1 mix test --include integration)"
+      "Bash(INTEGRATION_TESTS=1 mix test --include integration)",
+      "WebFetch(domain:georgeguimaraes.com)",
+      "WebFetch(domain:agoraprotocol.org)",
+      "Bash(git add:*)",
+      "Bash(gh issue create:*)",
+      "Bash(gh issue view:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

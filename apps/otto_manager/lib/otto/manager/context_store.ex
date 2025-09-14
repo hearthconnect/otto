@@ -322,10 +322,13 @@ defmodule Otto.Manager.ContextStore do
   defp cleanup_expired_contexts(state) do
     now = System.monotonic_time(:millisecond)
 
-    # Find and delete expired contexts
-    expired_keys = :ets.select(state.table, [
-      {{"$1", :_, :"$2"}, [{:andalso, {:is_integer, :"$2"}, {:<, :"$2", {:const, now}}}], [:"$1"]}
-    ])
+    # Find and delete expired contexts using a comprehension instead of match spec
+    all_entries = :ets.tab2list(state.table)
+
+    expired_keys = for {key, _value, expires_at} <- all_entries,
+                      is_integer(expires_at),
+                      expires_at < now,
+                      do: key
 
     Enum.each(expired_keys, fn key ->
       :ets.delete(state.table, key)

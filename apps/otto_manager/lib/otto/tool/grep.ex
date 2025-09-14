@@ -230,7 +230,8 @@ defmodule Otto.Tool.Grep do
       error ->
         Logger.error("Ripgrep execution error",
           session_id: Map.get(context, :session_id),
-          error: inspect(error)
+          error: inspect(error),
+          stacktrace: inspect(__STACKTRACE__)
         )
         {:error, "search execution failed"}
     end

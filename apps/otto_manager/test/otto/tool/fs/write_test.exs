@@ -90,7 +90,7 @@ defmodule Otto.Tool.FS.WriteTest do
         "content" => "Evil content"
       }
 
-      assert {:error, "file_path is outside working directory"} = Write.execute(args, context)
+      assert {:error, "file_path cannot contain parent directory references"} = Write.execute(args, context)
     end
 
     test "rejects absolute paths outside working directory", %{context: context} do

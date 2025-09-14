@@ -1,0 +1,11 @@
+description: "Agent without a name - should fail validation"
+model: "claude-3-haiku"
+system_prompt: "Test prompt"
+
+tools:
+  - "FS.Read"
+
+budgets:
+  time_limit: 300
+  token_limit: 10000
+  cost_limit: 1.0
