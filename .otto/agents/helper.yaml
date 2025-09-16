@@ -1,0 +1,8 @@
+name: "helper"
+system_prompt: "You are a helpful coding assistant"
+tools: ["fs.read", "fs.write", "grep"]
+working_dir: "."
+budgets:
+  time_seconds: 300
+  max_tokens: 10000
+  max_cost_dollars: 1.0

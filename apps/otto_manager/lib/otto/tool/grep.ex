@@ -204,37 +204,35 @@ defmodule Otto.Tool.Grep do
   defp execute_ripgrep(params, context) do
     cmd_args = build_ripgrep_args(params)
 
-    try do
-      case System.cmd("rg", cmd_args, [
-        cd: params.working_dir,
-        stderr_to_stdout: true,
-        timeout: @timeout
-      ]) do
-        {output, 0} ->
-          results = parse_ripgrep_output(output, params)
-          {:ok, Enum.take(results, @max_results)}
+    case System.cmd("rg", cmd_args, [
+      cd: params.working_dir,
+      stderr_to_stdout: true,
+      timeout: @timeout
+    ]) do
+      {output, 0} ->
+        results = parse_ripgrep_output(output, params)
+        {:ok, Enum.take(results, @max_results)}
 
-        {_output, 1} ->
-          # Exit code 1 means no matches found
-          {:ok, []}
+      {_output, 1} ->
+        # Exit code 1 means no matches found
+        {:ok, []}
 
-        {output, exit_code} ->
-          Logger.warning("Ripgrep command failed",
-            session_id: Map.get(context, :session_id),
-            exit_code: exit_code,
-            output: String.slice(output, 0, 500)
-          )
-          {:error, "search failed: #{String.slice(output, 0, 200)}"}
-      end
-    rescue
-      error ->
-        Logger.error("Ripgrep execution error",
+      {output, exit_code} ->
+        Logger.warning("Ripgrep command failed",
           session_id: Map.get(context, :session_id),
-          error: inspect(error),
-          stacktrace: inspect(__STACKTRACE__)
+          exit_code: exit_code,
+          output: String.slice(output, 0, 500)
         )
-        {:error, "search execution failed"}
+        {:error, "search failed: #{String.slice(output, 0, 200)}"}
     end
+  rescue
+    error ->
+      Logger.error("Ripgrep execution error",
+        session_id: Map.get(context, :session_id),
+        error: inspect(error),
+        stacktrace: inspect(__STACKTRACE__)
+      )
+      {:error, "search execution failed"}
   end
 
   defp build_ripgrep_args(params) do

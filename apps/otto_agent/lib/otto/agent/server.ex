@@ -122,7 +122,7 @@ defmodule Otto.Agent.Server do
   end
 
   @impl true
-  def handle_call({:invoke, request}, _from, state) do
+  def handle_call({:invoke, request}, _from, state) when is_map(request) do
     Logger.info("Agent invocation started",
       session_id: state.session_id,
       input_length: String.length(request.input)
@@ -151,6 +151,33 @@ defmodule Otto.Agent.Server do
   @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, {:ok, state}, state}
+  end
+
+  @impl true
+  def handle_call(:get_status, _from, state) do
+    uptime_ms = DateTime.diff(DateTime.utc_now(), state.start_time, :millisecond)
+
+    status = %{
+      state: :idle,  # TODO: track actual state (idle/busy)
+      session_id: state.session_id,
+      uptime_ms: uptime_ms,
+      budget_usage: calculate_budget_usage(state),
+      tool_calls: length(state.transcript),
+      name: state.config.name
+    }
+
+    {:reply, status, state}
+  end
+
+  @impl true
+  def handle_call({:invoke, task}, from, state) when is_binary(task) do
+    # Convert simple string task to the expected request format
+    request = %{
+      input: task,
+      context: %{},
+      options: []
+    }
+    handle_call({:invoke, request}, from, state)
   end
 
   @impl true
@@ -278,6 +305,17 @@ defmodule Otto.Agent.Server do
   defp record_cost_usage(state, cost) do
     updated_budgets = %{state.budgets | cost_used: state.budgets.cost_used + cost}
     %{state | budgets: updated_budgets}
+  end
+
+  defp calculate_budget_usage(state) do
+    %{
+      time_used: DateTime.diff(DateTime.utc_now(), state.start_time, :second),
+      tokens_used: state.budgets.tokens_used,
+      cost_used: state.budgets.cost_used,
+      time_limit: state.config.budgets[:time_seconds],
+      token_limit: state.config.budgets[:max_tokens],
+      cost_limit: state.config.budgets[:max_cost_dollars]
+    }
   end
 
   @doc """
