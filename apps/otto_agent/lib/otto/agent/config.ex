@@ -10,6 +10,7 @@ defmodule Otto.Agent.Config do
 
   defstruct [
     :name,
+    :model,
     :system_prompt,
     :tools,
     :working_dir,
@@ -24,6 +25,7 @@ defmodule Otto.Agent.Config do
 
   @type t :: %Config{
     name: String.t(),
+    model: String.t(),
     system_prompt: String.t(),
     tools: [String.t()],
     working_dir: String.t(),
@@ -35,6 +37,11 @@ defmodule Otto.Agent.Config do
       type: :string,
       required: true,
       doc: "Name of the agent"
+    ],
+    model: [
+      type: :string,
+      default: "gpt-3.5-turbo",
+      doc: "LLM model to use for the agent (e.g., gpt-3.5-turbo, gpt-4)"
     ],
     system_prompt: [
       type: :string,

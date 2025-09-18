@@ -186,7 +186,7 @@ defmodule Otto.AgentConfig do
         nil -> ["Missing required field: #{field}" | acc]
         "" -> ["Empty required field: #{field}" | acc]
         [] when field == :tools -> ["Tools list cannot be empty" | acc]
-        %{} when field == :budgets and map_size(Map.get(config, field)) == 0 ->
+        %{} when field == :budgets and not is_map_key(config, :budgets) ->
           ["Budgets cannot be empty" | acc]
         _ -> acc
       end

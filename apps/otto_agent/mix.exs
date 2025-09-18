@@ -30,7 +30,8 @@ defmodule Otto.Agent.MixProject do
       {:nimble_options, "~> 1.1"},
       {:httpoison, "~> 2.2"},
       {:jason, "~> 1.4"},
-      {:otto_manager, in_umbrella: true}
+      {:otto_manager, in_umbrella: true},
+      {:otto_llm, in_umbrella: true}
     ]
   end
 end
