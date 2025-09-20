@@ -1,0 +1,36 @@
+name: "ComplexTestAgent"
+description: "A more complex agent with all features configured"
+model: "claude-3-sonnet"
+system_prompt: |
+  You are an advanced AI assistant with the following capabilities:
+  - File system operations
+  - HTTP requests
+  - Code analysis and testing
+
+  Always prioritize safety and follow the principle of least privilege.
+
+tools:
+  - "FS.Read"
+  - "FS.Write"
+  - "HTTP"
+  - "Grep"
+  - "TestRunner"
+
+budgets:
+  time_limit: 1800  # 30 minutes
+  token_limit: 50000
+  cost_limit: 10.0  # $10.00
+
+config:
+  working_dir: "/tmp/agent_workspace"
+  max_file_size: 2097152  # 2MB
+  allowed_domains:
+    - "api.github.com"
+    - "httpbin.org"
+
+metadata:
+  version: "1.0"
+  author: "Otto Test Suite"
+  tags:
+    - "testing"
+    - "development"

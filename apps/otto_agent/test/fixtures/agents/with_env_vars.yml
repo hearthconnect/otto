@@ -1,0 +1,17 @@
+name: "EnvVarAgent"
+description: "Agent with environment variable interpolation"
+model: "${AI_MODEL:-claude-3-haiku}"
+system_prompt: "You are ${AGENT_ROLE:-a helpful assistant}."
+
+tools:
+  - "FS.Read"
+  - "FS.Write"
+
+budgets:
+  time_limit: ${TIME_LIMIT:-300}
+  token_limit: ${TOKEN_LIMIT:-10000}
+  cost_limit: ${COST_LIMIT:-1.0}
+
+config:
+  working_dir: "${WORKSPACE_DIR:-/tmp/default_workspace}"
+  api_base_url: "${API_BASE_URL}"

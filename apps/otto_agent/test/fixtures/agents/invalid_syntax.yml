@@ -1,0 +1,15 @@
+name: "SyntaxErrorAgent"
+description: "Agent with YAML syntax errors"
+model: "claude-3-haiku"
+system_prompt: "Test prompt"
+
+tools:
+  - "FS.Read"
+  - "FS.Write"
+  # Missing closing bracket
+  [invalid yaml syntax here
+
+budgets:
+  time_limit: 300
+  token_limit: 10000
+  cost_limit: 1.0

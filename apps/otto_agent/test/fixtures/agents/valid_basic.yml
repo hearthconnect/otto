@@ -1,0 +1,13 @@
+name: "BasicTestAgent"
+description: "A simple agent for testing basic functionality"
+model: "claude-3-haiku"
+system_prompt: "You are a helpful assistant that follows instructions carefully."
+
+tools:
+  - "FS.Read"
+  - "FS.Write"
+
+budgets:
+  time_limit: 300  # 5 minutes
+  token_limit: 10000
+  cost_limit: 1.0  # $1.00

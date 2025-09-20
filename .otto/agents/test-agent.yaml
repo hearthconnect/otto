@@ -1,0 +1,9 @@
+name: test-agent
+system_prompt: "You are a helpful test agent for Otto Phase 0 verification."
+working_dir: "/tmp/otto-test"
+tools:
+  - file_reader
+budgets:
+  time_seconds: 300
+  max_tokens: 1000
+  max_cost_dollars: 0.10

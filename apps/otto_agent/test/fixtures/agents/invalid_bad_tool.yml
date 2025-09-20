@@ -1,0 +1,14 @@
+name: "BadToolAgent"
+description: "Agent with invalid tool reference"
+model: "claude-3-haiku"
+system_prompt: "Test prompt"
+
+tools:
+  - "FS.Read"
+  - "NonExistentTool"  # Invalid tool
+  - "FS.Write"
+
+budgets:
+  time_limit: 300
+  token_limit: 10000
+  cost_limit: 1.0

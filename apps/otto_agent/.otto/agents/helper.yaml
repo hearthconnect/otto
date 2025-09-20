@@ -1,0 +1,8 @@
+name: "helper"
+model: "gpt-3.5-turbo"
+system_prompt: "You are a helpful coding assistant. You help users understand code, write new code, debug issues, and explain programming concepts clearly and concisely."
+working_dir: "."
+budgets:
+  time_seconds: 300
+  max_tokens: 10000
+  max_cost_dollars: 1.0
