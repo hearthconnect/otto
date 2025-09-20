@@ -4,8 +4,8 @@
 # Otto System Capabilities Test & Documentation
 # =============================================================================
 #
-# This script demonstrates the complete capabilities of the Otto AI agent system,
-# including LLM integration, tool orchestration, and multi-turn conversations.
+# This script demonstrates the core capabilities of the Otto AI agent system,
+# including LLM integration, agent lifecycle management, and multi-turn conversations.
 # It serves both as a test suite and living documentation of the system's features.
 #
 # Prerequisites:
@@ -23,13 +23,13 @@ Application.ensure_all_started(:otto_agent)
 
 defmodule OttoSystemTest do
   @moduledoc """
-  Comprehensive test suite demonstrating Otto's full capabilities.
+  Comprehensive test suite demonstrating Otto's core capabilities.
   """
 
   def run do
     IO.puts """
     ╔══════════════════════════════════════════════════════════════════════╗
-    ║       Otto AI Agent System - Comprehensive Capabilities Test        ║
+    ║       Otto AI Agent System - Core Capabilities Test                 ║
     ╚══════════════════════════════════════════════════════════════════════╝
     """
 
@@ -42,16 +42,13 @@ defmodule OttoSystemTest do
     # Test 2: Agent Lifecycle Management
     results = [test_agent_lifecycle() | results]
 
-    # Test 3: Tool Registration and Orchestration
-    results = [test_tool_orchestration() | results]
-
-    # Test 4: Multi-turn Conversations
+    # Test 3: Multi-turn Conversations
     results = [test_conversations() | results]
 
-    # Test 5: Budget Tracking
+    # Test 4: Budget Tracking
     results = [test_budget_tracking() | results]
 
-    # Test 6: Real-world Scenario
+    # Test 5: Real-world Scenario
     results = [test_real_world_scenario() | results]
 
     # Print summary
@@ -118,65 +115,15 @@ defmodule OttoSystemTest do
     end
   end
 
-  defp test_tool_orchestration do
-    IO.puts "\n🛠️  Test 3: Tool Registration and Orchestration"
-    IO.puts "─────────────────────────────────────"
-
-    try do
-      # Register tools with Tool.Bus
-      :ok = Otto.Tool.Bus.register_tool(Otto.Tool.Bus, "fs_read", Otto.Tool.FS.Read)
-      IO.puts "  ✅ Registered fs_read tool"
-
-      :ok = Otto.Tool.Bus.register_tool(Otto.Tool.Bus, "fs_write", Otto.Tool.FS.Write)
-      IO.puts "  ✅ Registered fs_write tool"
-
-      :ok = Otto.Tool.Bus.register_tool(Otto.Tool.Bus, "grep", Otto.Tool.Grep)
-      IO.puts "  ✅ Registered grep tool"
-
-      # List registered tools
-      {:ok, tools} = Otto.Tool.Bus.list_tools(Otto.Tool.Bus)
-      IO.puts "  📋 Available tools: #{inspect(Enum.map(tools, & &1.name))}"
-
-      # Start agent with tool access
-      {:ok, agent} = Otto.Agent.start_agent("tool_agent")
-
-      # Grant permissions
-      Otto.Tool.Bus.grant_permission(Otto.Tool.Bus, "tool_agent", "fs_read")
-      Otto.Tool.Bus.grant_permission(Otto.Tool.Bus, "tool_agent", "fs_write")
-      Otto.Tool.Bus.grant_permission(Otto.Tool.Bus, "tool_agent", "grep")
-      IO.puts "  ✅ Granted tool permissions"
-
-      # Test file creation
-      {:ok, result} = Otto.Agent.invoke(agent,
-        "Create a file called 'otto_test.txt' with content 'Otto AI is working!'")
-      IO.puts "  ✅ File operation requested"
-
-      # Verify file was created
-      if File.exists?("otto_test.txt") do
-        {:ok, content} = File.read("otto_test.txt")
-        IO.puts "  ✅ File created with content: #{inspect(content)}"
-        File.rm("otto_test.txt")
-      end
-
-      Otto.Agent.stop_agent(agent)
-
-      {:ok, "Tool Orchestration"}
-    rescue
-      error ->
-        IO.puts "  ❌ Error: #{inspect(error)}"
-        {:error, "Tool Orchestration"}
-    end
-  end
-
   defp test_conversations do
-    IO.puts "\n💬 Test 4: Multi-turn Conversations"
+    IO.puts "\n💬 Test 3: Multi-turn Conversations"
     IO.puts "─────────────────────────────────────"
 
     try do
       {:ok, agent} = Otto.Agent.start_agent("conversation_agent")
 
       # First turn
-      {:ok, result1} = Otto.Agent.invoke(agent, "Remember the number 42")
+      {:ok, _result1} = Otto.Agent.invoke(agent, "Remember the number 42")
       IO.puts "  ✅ Turn 1: Agent acknowledged"
 
       # Second turn - test memory
@@ -190,7 +137,7 @@ defmodule OttoSystemTest do
       end
 
       # Third turn - different topic
-      {:ok, result3} = Otto.Agent.invoke(agent, "Now let's talk about Elixir. What is GenServer?")
+      {:ok, _result3} = Otto.Agent.invoke(agent, "Now let's talk about Elixir. What is GenServer?")
       IO.puts "  ✅ Turn 3: Topic switch handled"
 
       Otto.Agent.stop_agent(agent)
@@ -204,7 +151,7 @@ defmodule OttoSystemTest do
   end
 
   defp test_budget_tracking do
-    IO.puts "\n💰 Test 5: Budget and Token Tracking"
+    IO.puts "\n💰 Test 4: Budget and Token Tracking"
     IO.puts "─────────────────────────────────────"
 
     try do
@@ -237,7 +184,7 @@ defmodule OttoSystemTest do
   end
 
   defp test_real_world_scenario do
-    IO.puts "\n🌍 Test 6: Real-world Scenario"
+    IO.puts "\n🌍 Test 5: Real-world Scenario"
     IO.puts "─────────────────────────────────────"
     IO.puts "  Scenario: Code review assistant"
 
@@ -295,24 +242,16 @@ defmodule OttoSystemTest do
     IO.puts "\n📋 System Capabilities Verified:"
     IO.puts "  • LLM integration with OpenAI GPT models"
     IO.puts "  • Agent lifecycle management (start/stop/invoke)"
-    IO.puts "  • Tool registration and orchestration"
-    IO.puts "  • Multi-turn conversation support"
-    IO.puts "  • Budget and token tracking"
+    IO.puts "  • Multi-turn conversation support with context preservation"
+    IO.puts "  • Budget and token tracking with cost calculation"
     IO.puts "  • Real-world application scenarios"
 
-    IO.puts "\n🔧 Available Tools:"
-    IO.puts "  • fs_read - Read files from the filesystem"
-    IO.puts "  • fs_write - Write files to the filesystem"
-    IO.puts "  • grep - Search for patterns in files"
-
     IO.puts "\n📚 Key APIs:"
-    IO.puts "  • Otto.Agent.start_agent(name) - Start a new agent"
+    IO.puts "  • Otto.Agent.start_agent(name) - Start a new agent from YAML config"
     IO.puts "  • Otto.Agent.invoke(agent, prompt) - Send a prompt to an agent"
-    IO.puts "  • Otto.Agent.stop_agent(agent) - Stop an agent"
+    IO.puts "  • Otto.Agent.stop_agent(agent) - Stop an agent gracefully"
     IO.puts "  • Otto.LLM.complete(model, prompt) - Direct LLM completion"
     IO.puts "  • Otto.LLM.chat(model, messages) - Chat with message history"
-    IO.puts "  • Otto.Tool.Bus.register_tool/3 - Register a tool"
-    IO.puts "  • Otto.Tool.Bus.grant_permission/3 - Grant tool permissions"
 
     if failed == 0 do
       IO.puts "\n🎉 All tests passed! Otto is fully operational."

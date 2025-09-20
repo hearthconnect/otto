@@ -4,7 +4,6 @@ defmodule Otto.Manager.Supervisor do
 
   This supervisor manages the core components of the Otto system including:
   - Registry for process naming
-  - Tool Bus for tool management
   - Context Store for ephemeral state
   - Checkpointer for persistence
   - Cost Tracker for usage monitoring
@@ -35,9 +34,6 @@ defmodule Otto.Manager.Supervisor do
     [
       # Registry for process naming using {:via, Registry, {Otto.Registry, {type, id}}}
       {Registry, keys: :unique, name: Otto.Registry},
-
-      # Tool Bus for tool registration and permission management
-      {Otto.Tool.Bus, name: Otto.Tool.Bus},
 
       # Core state management GenServers
       {Otto.Manager.ContextStore, name: Otto.Manager.ContextStore},

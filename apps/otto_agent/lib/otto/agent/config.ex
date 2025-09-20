@@ -12,7 +12,6 @@ defmodule Otto.Agent.Config do
     :name,
     :model,
     :system_prompt,
-    :tools,
     :working_dir,
     budgets: %{}
   ]
@@ -27,7 +26,6 @@ defmodule Otto.Agent.Config do
     name: String.t(),
     model: String.t(),
     system_prompt: String.t(),
-    tools: [String.t()],
     working_dir: String.t(),
     budgets: budget()
   }
@@ -47,11 +45,6 @@ defmodule Otto.Agent.Config do
       type: :string,
       required: true,
       doc: "System prompt for the agent"
-    ],
-    tools: [
-      type: {:list, :string},
-      default: [],
-      doc: "List of tool names available to the agent"
     ],
     working_dir: [
       type: :string,

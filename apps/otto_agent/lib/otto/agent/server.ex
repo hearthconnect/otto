@@ -1,277 +1,220 @@
 defmodule Otto.Agent.Server do
   @moduledoc """
-  Main orchestrator GenServer for agent invocations.
+  GenServer implementation for an Otto AI agent.
 
-  Handles:
-  - Budget enforcement (time, tokens, cost limits)
-  - Transcript capture and artifact management
-  - Integration with ContextStore and Checkpointer
-  - Tool invocation coordination
+  This server manages the agent's lifecycle, handles invocations, tracks budget usage,
+  and maintains conversation history. It integrates with the LLM provider for
+  generating intelligent responses.
   """
 
   use GenServer
   require Logger
-
   alias Otto.Agent.Config
 
+  @session_cleanup_interval 60_000  # 1 minute
+  @session_ttl 3_600_000  # 1 hour
+
+  # State structure
   defstruct [
-    :config,
     :session_id,
-    :start_time,
-    :transcript,
+    :config,
     :budgets,
+    :transcript,
     :artifacts,
-    :tool_bus
+    :context,
+    :status,
+    :created_at,
+    :last_activity_at
   ]
 
   @type state :: %__MODULE__{
-    config: Config.t(),
     session_id: String.t(),
-    start_time: DateTime.t(),
-    transcript: [map()],
-    budgets: %{
-      time_remaining: non_neg_integer(),
-      tokens_used: non_neg_integer(),
-      cost_used: float()
-    },
-    artifacts: map(),
-    tool_bus: pid()
-  }
-
-  @type invocation_request :: %{
-    input: String.t(),
+    config: Config.t(),
+    budgets: map(),
+    transcript: list(),
+    artifacts: list(),
     context: map(),
-    options: keyword()
+    status: :idle | :busy | :stopping,
+    created_at: DateTime.t(),
+    last_activity_at: DateTime.t()
   }
 
-  @type invocation_result :: %{
-    output: String.t(),
-    artifacts: map(),
-    transcript: [map()],
-    budget_status: map(),
-    success: boolean()
-  }
-
-  # Client API
+  ## Client API
 
   @doc """
-  Starts an AgentServer with the given configuration.
-
-  ## Options
-
-  - `:session_id` - Unique identifier for this session (defaults to UUID)
-  - `:tool_bus` - PID of the tool bus process (optional)
-
-  ## Examples
-
-      {:ok, pid} = Otto.Agent.Server.start_link(config, session_id: "test-123")
+  Starts an Agent server with the given configuration.
   """
-  @spec start_link(Config.t(), keyword()) :: GenServer.on_start()
-  def start_link(%Config{} = config, opts \\ []) do
-    session_id = Keyword.get(opts, :session_id, generate_session_id())
-    tool_bus = Keyword.get(opts, :tool_bus)
-
-    GenServer.start_link(__MODULE__, {config, session_id, tool_bus}, opts)
+  def start_link(config, opts \\ []) do
+    GenServer.start_link(__MODULE__, config, opts)
   end
 
   @doc """
-  Invokes the agent with the given request.
-
-  Returns the result of the invocation including output, artifacts,
-  and budget status.
+  Invokes the agent with a task.
   """
-  @spec invoke(GenServer.server(), invocation_request()) ::
-    {:ok, invocation_result()} | {:error, term()}
-  def invoke(server, request) do
-    GenServer.call(server, {:invoke, request}, :infinity)
+  def invoke(server, task) do
+    GenServer.call(server, {:invoke, task}, :infinity)
   end
 
   @doc """
-  Gets the current state of the agent session.
+  Gets the current status of the agent.
   """
-  @spec get_state(GenServer.server()) :: {:ok, state()}
-  def get_state(server) do
-    GenServer.call(server, :get_state)
+  def get_status(server) do
+    GenServer.call(server, :get_status)
   end
 
   @doc """
   Stops the agent server gracefully.
   """
-  @spec stop(GenServer.server()) :: :ok
   def stop(server) do
     GenServer.stop(server, :normal)
   end
 
-  # Server Callbacks
+  ## Server Callbacks
 
   @impl true
-  def init({%Config{} = config, session_id, tool_bus}) do
-    Logger.info("Starting AgentServer", session_id: session_id, agent_name: config.name)
+  def init(config) do
+    session_id = generate_session_id()
+    now = DateTime.utc_now()
 
     state = %__MODULE__{
-      config: config,
       session_id: session_id,
-      start_time: DateTime.utc_now(),
+      config: config,
+      budgets: init_budgets(config),
       transcript: [],
-      budgets: initialize_budgets(config.budgets),
-      artifacts: %{},
-      tool_bus: tool_bus
+      artifacts: [],
+      context: %{},
+      status: :idle,
+      created_at: now,
+      last_activity_at: now
     }
+
+    Logger.info("Starting AgentServer",
+      session_id: session_id,
+      agent_name: config.name
+    )
+
+    # Schedule periodic cleanup
+    Process.send_after(self(), :cleanup_session, @session_cleanup_interval)
 
     {:ok, state}
   end
 
   @impl true
-  def handle_call({:invoke, request}, _from, state) when is_map(request) do
+  def handle_call({:invoke, task}, _from, state) do
+    state = %{state | status: :busy, last_activity_at: DateTime.utc_now()}
+
     Logger.info("Agent invocation started",
       session_id: state.session_id,
-      input_length: String.length(request.input)
+      task_length: String.length(task)
     )
 
-    case check_budgets(state) do
-      {:ok, state} ->
-        case execute_invocation(request, state) do
-          {:ok, result, new_state} ->
-            Logger.info("Agent invocation completed successfully",
-              session_id: state.session_id,
-              output_length: String.length(result.output)
-            )
-            {:reply, {:ok, result}, new_state}
-        end
+    # Execute the invocation
+    case execute_invocation(task, state) do
+      {:ok, result, updated_state} ->
+        final_state = %{updated_state | status: :idle, last_activity_at: DateTime.utc_now()}
 
-      {:error, budget_error} ->
-        Logger.warning("Budget exceeded",
+        Logger.info("Agent invocation completed successfully",
           session_id: state.session_id,
-          budget_error: budget_error
+          duration_ms: calculate_duration(state.last_activity_at, final_state.last_activity_at)
         )
-        {:reply, {:error, {:budget_exceeded, budget_error}}, state}
+
+        {:reply, {:ok, format_result(result, final_state)}, final_state}
+
+      {:error, reason, error_state} ->
+        final_state = %{error_state | status: :idle}
+        Logger.error("Agent invocation failed",
+          session_id: state.session_id,
+          reason: inspect(reason)
+        )
+        {:reply, {:error, reason}, final_state}
     end
   end
 
   @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, {:ok, state}, state}
-  end
-
-  @impl true
   def handle_call(:get_status, _from, state) do
-    uptime_ms = DateTime.diff(DateTime.utc_now(), state.start_time, :millisecond)
+    uptime_ms = DateTime.diff(DateTime.utc_now(), state.created_at, :millisecond)
 
     status = %{
-      state: :idle,  # TODO: track actual state (idle/busy)
+      state: state.status,
       session_id: state.session_id,
+      name: state.config.name,
       uptime_ms: uptime_ms,
-      budget_usage: calculate_budget_usage(state),
-      tool_calls: length(state.transcript),
-      name: state.config.name
+      budget_usage: %{
+        tokens_used: state.budgets.tokens_used || 0,
+        cost_used: state.budgets.cost_used || 0.0,
+        time_remaining: state.budgets.time_remaining || 0
+      },
+      transcript_length: length(state.transcript),
+      last_activity: state.last_activity_at
     }
 
     {:reply, status, state}
   end
 
   @impl true
-  def handle_call({:invoke, task}, from, state) when is_binary(task) do
-    # Convert simple string task to the expected request format
-    request = %{
-      input: task,
-      context: %{},
-      options: []
-    }
-    handle_call({:invoke, request}, from, state)
+  def handle_info(:cleanup_session, state) do
+    # Check if session is stale
+    if DateTime.diff(DateTime.utc_now(), state.last_activity_at, :millisecond) > @session_ttl do
+      Logger.info("Session expired, stopping agent",
+        session_id: state.session_id
+      )
+      {:stop, :normal, state}
+    else
+      # Schedule next cleanup
+      Process.send_after(self(), :cleanup_session, @session_cleanup_interval)
+      {:noreply, state}
+    end
   end
 
   @impl true
-  def handle_info(:check_timeout, state) do
-    case check_time_budget(state) do
-      {:ok, _} ->
-        # Schedule next timeout check
-        Process.send_after(self(), :check_timeout, 5_000)
-        {:noreply, state}
-
-      {:error, :time_budget_exceeded} ->
-        Logger.warning("Time budget exceeded, stopping agent", session_id: state.session_id)
-        {:stop, :normal, state}
-    end
+  def handle_info(msg, state) do
+    Logger.warning("Received unexpected message",
+      session_id: state.session_id,
+      message: inspect(msg)
+    )
+    {:noreply, state}
   end
 
-  # Private Functions
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("AgentServer terminating",
+      session_id: state.session_id,
+      reason: inspect(reason)
+    )
+    :ok
+  end
+
+  ## Private Functions
 
   defp generate_session_id do
-    :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+    "session_#{System.system_time(:millisecond)}_#{:rand.uniform(99999)}"
   end
 
-  defp initialize_budgets(budget_config) do
+  defp init_budgets(config) do
+    budgets = config.budgets || %{}
+
     %{
-      time_remaining: Map.get(budget_config, :time_seconds, :infinity),
+      time_remaining: Map.get(budgets, :time_seconds, 300) * 1000,
+      max_tokens: Map.get(budgets, :max_tokens, 10000),
       tokens_used: 0,
-      cost_used: 0.0,
-      max_tokens: Map.get(budget_config, :max_tokens, :infinity),
-      max_cost_dollars: Map.get(budget_config, :max_cost_dollars, :infinity)
+      max_cost: Map.get(budgets, :max_cost_dollars, 1.0),
+      cost_used: 0.0
     }
   end
 
-  defp check_budgets(state) do
-    with {:ok, state} <- check_time_budget(state),
-         {:ok, state} <- check_token_budget(state),
-         {:ok, state} <- check_cost_budget(state) do
-      {:ok, state}
-    end
-  end
-
-  defp check_time_budget(%{budgets: %{time_remaining: :infinity}} = state) do
-    {:ok, state}
-  end
-
-  defp check_time_budget(%{budgets: budgets, start_time: start_time} = state) do
-    elapsed_seconds = DateTime.diff(DateTime.utc_now(), start_time)
-    remaining = budgets.time_remaining - elapsed_seconds
-
-    if remaining > 0 do
-      updated_budgets = %{budgets | time_remaining: remaining}
-      {:ok, %{state | budgets: updated_budgets}}
-    else
-      {:error, :time_budget_exceeded}
-    end
-  end
-
-  defp check_token_budget(%{budgets: %{max_tokens: :infinity}} = state) do
-    {:ok, state}
-  end
-
-  defp check_token_budget(%{budgets: budgets} = state) do
-    if budgets.tokens_used < budgets.max_tokens do
-      {:ok, state}
-    else
-      {:error, :token_budget_exceeded}
-    end
-  end
-
-  defp check_cost_budget(%{budgets: %{max_cost_dollars: :infinity}} = state) do
-    {:ok, state}
-  end
-
-  defp check_cost_budget(%{budgets: budgets} = state) do
-    if budgets.cost_used < budgets.max_cost_dollars do
-      {:ok, state}
-    else
-      {:error, :cost_budget_exceeded}
-    end
-  end
-
-  defp execute_invocation(request, state) do
-    # Add request to transcript
-    transcript_entry = %{
+  defp execute_invocation(task, state) do
+    # Add user input to transcript
+    user_entry = %{
       type: :user_input,
       timestamp: DateTime.utc_now(),
-      content: request.input,
-      context: Map.get(request, :context, %{})
+      content: task
     }
 
-    updated_transcript = [transcript_entry | state.transcript]
+    updated_transcript = [user_entry | state.transcript]
     state = %{state | transcript: updated_transcript}
 
     # Use real LLM integration
-    case invoke_llm(request.input, state) do
+    case invoke_llm(task, state) do
       {:ok, llm_response, updated_state} ->
         result = %{
           output: llm_response.content,
@@ -322,23 +265,26 @@ defmodule Otto.Agent.Server do
   end
 
   defp record_token_usage(state, token_count) do
-    updated_budgets = %{state.budgets | tokens_used: state.budgets.tokens_used + token_count}
+    updated_budgets = Map.update!(state.budgets, :tokens_used, &(&1 + token_count))
     %{state | budgets: updated_budgets}
   end
 
   defp record_cost_usage(state, cost) do
-    updated_budgets = %{state.budgets | cost_used: state.budgets.cost_used + cost}
+    updated_budgets = Map.update!(state.budgets, :cost_used, &(&1 + cost))
     %{state | budgets: updated_budgets}
   end
 
-  defp calculate_budget_usage(state) do
+  defp format_result(result, state) do
     %{
-      time_used: DateTime.diff(DateTime.utc_now(), state.start_time, :second),
-      tokens_used: state.budgets.tokens_used,
-      cost_used: state.budgets.cost_used,
-      time_limit: state.config.budgets[:time_seconds],
-      token_limit: state.config.budgets[:max_tokens],
-      cost_limit: state.config.budgets[:max_cost_dollars]
+      output: result.output,
+      artifacts: result.artifacts,
+      transcript: result.transcript,
+      budget_status: %{
+        time_remaining: state.budgets.time_remaining,
+        tokens_used: state.budgets.tokens_used,
+        cost_used: state.budgets.cost_used
+      },
+      success: result.success
     }
   end
 
@@ -352,140 +298,39 @@ defmodule Otto.Agent.Server do
     # Get model from config with fallback
     model = state.config.model || "gpt-3.5-turbo"
 
-    # Build function schemas for available tools
-    function_schemas = build_function_schemas(state.config.tools)
-
     # Set up LLM options based on budget constraints
-    llm_opts = [
-      max_tokens: calculate_max_tokens(state),
-      temperature: 0.7,
-      functions: function_schemas
-    ]
-
-    Logger.info("Invoking LLM",
-      session_id: state.session_id,
-      model: model,
-      message_count: length(messages),
-      tools_available: length(function_schemas)
-    )
-
-    case Otto.LLM.chat(model, messages, llm_opts) do
-      {:ok, llm_response} ->
-        # Handle potential function calls
-        case Map.get(llm_response, :function_call) do
-          nil ->
-            # Regular text response
-            handle_text_response(llm_response, state)
-
-          function_call ->
-            # Function call response - execute tool and continue conversation
-            handle_function_call(function_call, llm_response, user_input, state)
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp handle_text_response(llm_response, state) do
-    # Update budget tracking with actual token usage
-    updated_state =
-      state
-      |> record_token_usage(llm_response.usage.total_tokens)
-      |> record_cost_usage(calculate_cost(llm_response, state.config.model || "gpt-3.5-turbo"))
-
-    # Add LLM response to transcript
-    response_entry = %{
-      type: :agent_output,
-      timestamp: DateTime.utc_now(),
-      content: llm_response.content,
-      model: llm_response.model,
-      token_usage: llm_response.usage
-    }
-
-    final_transcript = [response_entry | updated_state.transcript]
-    final_state = %{updated_state | transcript: final_transcript}
-
-    {:ok, llm_response, final_state}
-  end
-
-  defp handle_function_call(function_call, llm_response, original_input, state) do
-    # Update state with initial LLM usage
-    updated_state =
-      state
-      |> record_token_usage(llm_response.usage.total_tokens)
-      |> record_cost_usage(calculate_cost(llm_response, state.config.model || "gpt-3.5-turbo"))
-
-    # Parse function arguments
-    case Jason.decode(function_call.arguments) do
-      {:ok, args} ->
-        # Execute the tool
-        case invoke_tool(updated_state, function_call.name, args) do
-          {:ok, tool_result, tool_updated_state} ->
-            # Add function call and result to conversation history
-            function_messages = [
-              %{
-                role: "assistant",
-                content: nil,
-                function_call: %{
-                  name: function_call.name,
-                  arguments: function_call.arguments
-                }
-              },
-              %{
-                role: "function",
-                name: function_call.name,
-                content: Jason.encode!(tool_result)
-              }
-            ]
-
-            # Continue conversation with function result
-            continue_after_function_call(function_messages, original_input, tool_updated_state)
-
-          {:error, tool_error, error_state} ->
-            # Handle tool execution error gracefully
-            error_content = "I encountered an error while using the #{function_call.name} tool: #{inspect(tool_error)}"
-
-            error_response = %{
-              content: error_content,
-              model: llm_response.model,
-              usage: llm_response.usage,
-              finish_reason: "tool_error"
-            }
-
-            handle_text_response(error_response, error_state)
-        end
-
-      {:error, json_error} ->
-        # Handle JSON parsing error
-        error_content = "I received invalid arguments for the #{function_call.name} tool: #{inspect(json_error)}"
-
-        error_response = %{
-          content: error_content,
-          model: llm_response.model,
-          usage: llm_response.usage,
-          finish_reason: "argument_error"
-        }
-
-        handle_text_response(error_response, updated_state)
-    end
-  end
-
-  defp continue_after_function_call(function_messages, original_input, state) do
-    # Build complete conversation including function call/result
-    base_messages = build_conversation_messages(original_input, state)
-    messages = base_messages ++ function_messages
-
-    model = state.config.model || "gpt-3.5-turbo"
-
     llm_opts = [
       max_tokens: calculate_max_tokens(state),
       temperature: 0.7
     ]
 
+    Logger.info("Invoking LLM",
+      session_id: state.session_id,
+      model: model,
+      message_count: length(messages)
+    )
+
     case Otto.LLM.chat(model, messages, llm_opts) do
-      {:ok, final_response} ->
-        handle_text_response(final_response, state)
+      {:ok, llm_response} ->
+        # Update budget tracking with actual token usage
+        updated_state =
+          state
+          |> record_token_usage(llm_response.usage.total_tokens)
+          |> record_cost_usage(calculate_cost(llm_response, model))
+
+        # Add LLM response to transcript
+        response_entry = %{
+          type: :agent_output,
+          timestamp: DateTime.utc_now(),
+          content: llm_response.content,
+          model: llm_response.model,
+          token_usage: llm_response.usage
+        }
+
+        final_transcript = [response_entry | updated_state.transcript]
+        final_state = %{updated_state | transcript: final_transcript}
+
+        {:ok, llm_response, final_state}
 
       {:error, reason} ->
         {:error, reason}
@@ -542,94 +387,7 @@ defmodule Otto.Agent.Server do
     input_cost + output_cost
   end
 
-  defp build_function_schemas(tool_names) do
-    # Get tool information from Tool.Bus (from manager app)
-    tool_names
-    |> Enum.map(&Otto.Tool.Bus.get_tool(Otto.Tool.Bus, &1))
-    |> Enum.filter(fn
-      {:ok, _tool_metadata} -> true
-      {:error, _} -> false
-    end)
-    |> Enum.map(fn {:ok, tool_metadata} -> build_function_schema_from_metadata(tool_metadata) end)
+  defp calculate_duration(start_time, end_time) do
+    DateTime.diff(end_time, start_time, :millisecond)
   end
-
-  defp build_function_schema_from_metadata(tool_metadata) do
-    # Create OpenAI function schema from tool metadata
-    %{
-      name: tool_metadata.name,
-      description: tool_metadata.description,
-      parameters: tool_metadata.parameters
-    }
-  end
-
-
-  @doc """
-  Validates tool permissions and invokes a tool if allowed.
-
-  This integrates with the ToolBus for actual tool execution.
-  """
-  @spec invoke_tool(state(), String.t(), map()) :: {:ok, term(), state()} | {:error, term(), state()}
-  def invoke_tool(state, tool_name, args) do
-    if tool_name in state.config.tools do
-      Logger.info("Tool invocation",
-        session_id: state.session_id,
-        tool: tool_name,
-        args: inspect(args, limit: :infinity)
-      )
-
-      # Create tool context
-      tool_context = Otto.ToolContext.new(
-        state.config,
-        state.config.working_dir,
-        state.budgets,
-        session_id: state.session_id
-      )
-
-      # Execute tool via Tool.Bus
-      case Otto.Tool.Bus.execute_tool(Otto.Tool.Bus, tool_name, args, tool_context) do
-        {:ok, result} ->
-          Logger.info("Tool execution successful",
-            session_id: state.session_id,
-            tool: tool_name,
-            result_type: get_result_type(result)
-          )
-
-          # Add to transcript
-          tool_entry = %{
-            type: :tool_invocation,
-            timestamp: DateTime.utc_now(),
-            tool: tool_name,
-            args: args,
-            result: result
-          }
-
-          updated_transcript = [tool_entry | state.transcript]
-          updated_state = %{state | transcript: updated_transcript}
-
-          {:ok, result, updated_state}
-
-        {:error, reason} ->
-          Logger.warning("Tool execution failed",
-            session_id: state.session_id,
-            tool: tool_name,
-            reason: inspect(reason)
-          )
-
-          {:error, reason, state}
-      end
-    else
-      Logger.warning("Tool not allowed",
-        session_id: state.session_id,
-        tool: tool_name,
-        allowed_tools: state.config.tools
-      )
-
-      {:error, {:tool_not_allowed, tool_name}, state}
-    end
-  end
-
-  defp get_result_type(result) when is_binary(result), do: "string"
-  defp get_result_type(result) when is_map(result), do: "map"
-  defp get_result_type(result) when is_list(result), do: "list"
-  defp get_result_type(_result), do: "other"
 end

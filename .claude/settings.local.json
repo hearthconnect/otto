@@ -21,7 +21,9 @@
       "Bash(git fetch:*)",
       "Bash(git checkout:*)",
       "Bash(git commit:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Read(//Users/jeffdeville/projects/**)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

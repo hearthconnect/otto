@@ -33,13 +33,11 @@ defmodule Otto.Agent do
   """
 
   alias Otto.Agent.{Config, Server}
-  alias Otto.Manager.Supervisor, as: ManagerSupervisor
 
   @type agent_ref :: pid() | atom()
   @type invoke_result :: %{
     content: String.t(),
     artifacts: [map()],
-    tool_calls: [map()],
     cost: map(),
     duration_ms: integer()
   }
@@ -296,7 +294,6 @@ defmodule Otto.Agent do
           result = %{
             content: server_result.output,
             artifacts: [],
-            tool_calls: extract_tool_calls(server_result.transcript || []),
             cost: %{
               tokens_used: get_in(server_result, [:budget_status, :tokens_used]) || 0,
               cost_used: get_in(server_result, [:budget_status, :cost_used]) || 0.0
@@ -326,15 +323,4 @@ defmodule Otto.Agent do
     end
   end
 
-  defp extract_tool_calls(transcript) do
-    transcript
-    |> Enum.filter(fn entry -> entry[:type] == :tool_invocation end)
-    |> Enum.map(fn entry ->
-      %{
-        tool: entry[:tool],
-        args: entry[:args] || %{},
-        result: entry[:result]
-      }
-    end)
-  end
 end

@@ -1,6 +1,6 @@
 name: "helper"
-system_prompt: "You are a helpful coding assistant"
-tools: ["fs.read", "fs.write", "grep"]
+model: "gpt-3.5-turbo"
+system_prompt: "You are a helpful coding assistant. You help users understand code, write new code, debug issues, and explain programming concepts clearly and concisely."
 working_dir: "."
 budgets:
   time_seconds: 300

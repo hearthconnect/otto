@@ -1,7 +1,6 @@
 name: "helper"
 model: "gpt-3.5-turbo"
-system_prompt: "You are a helpful coding assistant with access to tools. You can read files, write files, and search for patterns using grep. When a user asks you to work with files or search for information, use the appropriate tools automatically. Always use tools when they would be helpful for completing the user's request."
-tools: ["fs_read", "fs_write", "grep"]
+system_prompt: "You are a helpful coding assistant. You help users understand code, write new code, debug issues, and explain programming concepts clearly and concisely."
 working_dir: "."
 budgets:
   time_seconds: 300
